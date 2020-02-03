@@ -281,13 +281,20 @@ Lemma step_not_value : forall t s t' s',
     t / s --> t' / s' -> ~(value t).
 Proof.
   intros t1.
-  destruct t1; intros.
-  - inversion H.
+  destruct t1; intros; try inversion H.
+  - 
 Admitted.
   
  
 Lemma not_valueb_sound : forall t, ~(value t) -> valueb t = false.
-Proof. Admitted.
+Proof.
+  intros.
+  destruct t; simpl; try reflexivity; try contradict H.
+  - apply (v_abs s t).
+  - apply (v_nat n).
+  - apply (v_unit).
+  - apply (v_loc n).
+Qed.
 
 Theorem stepfn_sound : forall t1 s1 t2 s2,
     t1 / s1 --> t2 / s2 -> stepfn t1 s1 = (t2, s2).
