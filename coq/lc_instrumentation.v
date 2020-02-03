@@ -270,13 +270,22 @@ Lemma stepfn_deterministic : forall t1 s1 t2 s2 t2' s2',
     t1 / s1 --> t2' / s2' ->
     t2 = t2' /\ s2 = s2'.
 Proof.
+  intros t1.
+  induction t1; intros.
+  - inversion H.
+  - inversion H; subst.
+    + specialize H2.
 Admitted.
 
 Lemma step_not_value : forall t s t' s',
     t / s --> t' / s' -> ~(value t).
 Proof.
+  intros t1.
+  destruct t1; intros.
+  - inversion H.
 Admitted.
-
+  
+ 
 Lemma not_valueb_sound : forall t, ~(value t) -> valueb t = false.
 Proof. Admitted.
 
@@ -285,17 +294,14 @@ Theorem stepfn_sound : forall t1 s1 t2 s2,
 Proof.
   intros t1.
   induction t1; intros.
+  - inversion H.
   - simpl.
-    inversion H.
-  - simpl.
-    inversion H.
-    + subst.
-      apply valueb_sound in H1.
+    inversion H; subst.
+    + apply valueb_sound in H1.
       rewrite H1.
       simpl.
       reflexivity.
-    + subst.
-      specialize (not_valueb_sound t1_1).
+    + specialize (not_valueb_sound t1_1).
       intro H2.
       specialize (step_not_value t1_1 s1 t1' s2 H1) as NV.
       specialize (H2 NV).
@@ -304,49 +310,103 @@ Proof.
       rewrite IHt1_1.
       reflexivity.
       assumption.
-    + 
-      
+    + apply valueb_sound in H2.
+      rewrite H2.
+      specialize (step_not_value t1_2 s1 t2' s2 H6) as NV.
+      specialize (not_valueb_sound t1_2).
+      intro H3.
+      specialize (H3 NV).
+      rewrite H3.
+      specialize (IHt1_2 s1 t2' s2).
+      rewrite IHt1_2.
+      reflexivity.
+      assumption.
+  - inversion H.
+  - inversion H.
   - simpl.
-    apply valueb_sound in H1.
-    rewrite H1.
-    reflexivity.
-  - subst.
-    simpl.
-    specialize (not_valueb_sound t0).
-    intro H2.
-    apply step_not_value in H1.
-    specialize (H2 H1).
-    rewrite H2.
-    
-    assert (valueb t0 = false).
-    { apply step_not_value in H1. unfold "~" in H1.
-    }
-      
-  - admit.
-  - auto.
-  - admit.
-  - auto.
-  - admit.
-  - admit.
-  - auto.
-  - auto.
+    inversion H; subst.
+    + cbn. reflexivity.
+    + specialize (step_not_value t1 s1 t1' s2 H1) as NV.
+      specialize (not_valueb_sound t1).
+      intro H2.
+      specialize (H2 NV).
+      rewrite H2.
+      specialize (IHt1 s1 t1' s2).
+      rewrite IHt1.
+      reflexivity.
+      assumption.
   - simpl.
-    apply valueb_sound in H1.
-    rewrite H1.
-    reflexivity.
-  - admit.
-  - simpl.
-    apply Nat.ltb_lt in H1.
-    rewrite H1.
-    reflexivity.
-  - admit.
-  - subst.
-    simpl.
-    apply valueb_sound in H3.
-    rewrite H3.
-    apply Nat.ltb_lt in H5.
-    rewrite H5.
-    reflexivity.
-  - admit.
-  - admit.
-Admitted.
+    inversion H; subst.
+    + cbn. reflexivity.
+    + specialize (step_not_value t1 s1 t1' s2 H1) as NV.
+      specialize (not_valueb_sound t1).
+      intro H2.
+      specialize (H2 NV).
+      rewrite H2.
+      specialize (IHt1 s1 t1' s2).
+      rewrite IHt1.
+      reflexivity.
+      assumption.
+  - inversion H; subst; simpl.
+    + specialize (step_not_value t1_1 s1 t1' s2 H1) as NV.
+      specialize (not_valueb_sound t1_1).
+      intro H2.
+      specialize (H2 NV).
+      rewrite H2.
+      specialize (IHt1_1 s1 t1' s2 H1).
+      rewrite IHt1_1.
+      reflexivity.
+    + reflexivity.
+    + reflexivity.
+  - inversion H.
+  - inversion H; subst; simpl.
+    + apply valueb_sound in H1.
+      rewrite H1.
+      reflexivity.
+    + specialize (step_not_value t1 s1 t1' s2 H1) as NV.
+      specialize (not_valueb_sound t1).
+      intro H2.
+      specialize (H2 NV).
+      rewrite H2.
+      specialize (IHt1 s1 t1' s2 H1).
+      rewrite IHt1.
+      reflexivity.
+  - inversion H; subst; simpl.
+    + apply Nat.ltb_lt in H1.
+      rewrite H1.
+      reflexivity.
+    + specialize (step_not_value t1 s1 t1' s2 H1) as NV.
+      specialize (not_valueb_sound t1).
+      intro H2.
+      specialize (H2 NV).
+      rewrite H2.
+      specialize (IHt1 s1 t1' s2 H1).
+      rewrite IHt1.
+      reflexivity.
+  - inversion H; subst; simpl.
+    + apply valueb_sound in H2.
+      rewrite H2.
+      apply Nat.ltb_lt in H6.
+      rewrite H6.
+      reflexivity.
+    + specialize (step_not_value t1_1 s1 t1' s2 H1) as NV.
+      specialize (not_valueb_sound t1_1).
+      intro H2.
+      specialize (H2 NV).
+      rewrite H2.
+      specialize (IHt1_1 s1 t1' s2 H1).
+      rewrite IHt1_1.
+      reflexivity.
+    + apply valueb_sound in H2.
+      rewrite H2.
+      specialize (step_not_value t1_2 s1 t2' s2 H6) as NV.
+      specialize (not_valueb_sound t1_2).
+      intro H3.
+      specialize (H3 NV).
+      rewrite H3.
+      specialize (IHt1_2 s1 t2' s2 H6).
+      rewrite IHt1_2.
+      reflexivity.
+  - inversion H.
+  - inversion H.
+Qed.
