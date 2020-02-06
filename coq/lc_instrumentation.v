@@ -287,9 +287,9 @@ Proof.
     rewrite H1.
     simpl.
     reflexivity.
-  - specialize (not_valueb_sound t1_1) as VBS;
-    specialize (step_not_value t1_1 s1 t1' s2 H1) as NV;
-    specialize (VBS NV);
+  - specialize (not_valueb_sound t1_1) as VBS.
+    specialize (step_not_value t1_1 s1 t1' s2 H1) as NV.
+    specialize (VBS NV).
     rewrite VBS.
     specialize (IHt1_1 s1 t1' s2).
     rewrite IHt1_1.
@@ -482,6 +482,63 @@ Definition replace_incr_loc (n:nat) (t:mtm) (mst:mstore) :=
   | (_, ct) => replace n (t, S ct) mst
   end. 
 
+Reserved Notation "t1 '/' st1 '-m>' t2 '/' st2"
+  (at level 40, st1 at level 39, t2 at level 39).
+
+Inductive metastep : mtm * mstore -> mtm * mstore -> Prop :=
+  | MST_AppAbs : forall x t12 v2 st,
+         mvalue v2 ->
+         mapp (mabs x t12) v2 / st -m> msubst x v2 t12 / st
+  | MST_App1 : forall t1 t1' t2 st st',
+         t1 / st -m> t1' / st' ->
+         mapp t1 t2 / st -m> mapp t1' t2 / st'
+  | MST_App2 : forall v1 t2 t2' st st',
+         mvalue v1 ->
+         t2 / st -m> t2' / st' ->
+         mapp v1 t2 / st -m> mapp v1 t2'/ st'
+  | MST_SuccNat : forall n st,
+         mscc (mconst n) / st -m> mconst (S n) / st
+  | MST_Succ : forall t1 t1' st st',
+         t1 / st -m> t1' / st' ->
+         mscc t1 / st -m> mscc t1' / st'
+  | MST_PredNat : forall n st,
+         mprd (mconst n) / st -m> mconst (pred n) / st
+  | MST_Pred : forall t1 t1' st st',
+         t1 / st -m> t1' / st' ->
+         mprd t1 / st -m> mprd t1' / st'
+  | MST_If0 : forall t1 t1' t2 t3 st st',
+         t1 / st -m> t1' / st' ->
+         mtest0 t1 t2 t3 / st -m> mtest0 t1' t2 t3 / st'
+  | MST_If0_Zero : forall t2 t3 st,
+         mtest0 (mconst 0) t2 t3 / st -m> t2 / st
+  | MST_If0_Nonzero : forall n t2 t3 st,
+         mtest0 (mconst (S n)) t2 t3 / st -m> t3 / st
+  | MST_Refvalue : forall v1 st,
+         mvalue v1 ->
+         mref v1 / st -m> mloc (length st) / (st ++ (v1,0)::nil)
+  | MST_Ref : forall t1 t1' st st',
+         t1 / st -m> t1' / st' ->
+         mref t1 /  st -m> mref t1' /  st'
+  | MST_DerefLoc : forall st l,
+         l < length st ->
+         mderef (mloc l) / st -m> mstore_lookup l st / mstore_incr_loc l st
+  | MST_Deref : forall t1 t1' st st',
+         t1 / st -m> t1' / st' ->
+         mderef t1 / st -m> mderef t1' / st'
+  | MST_Assign : forall v2 l st,
+         mvalue v2 ->
+         l < length st ->
+         massign (mloc l) v2 / st -m> munit / replace_incr_loc l v2 st
+  | MST_Assign1 : forall t1 t1' t2 st st',
+         t1 / st -m> t1' / st' ->
+         massign t1 t2 / st -m> massign t1' t2 / st'
+  | MST_Assign2 : forall v1 t2 t2' st st',
+         mvalue v1 ->
+         t2 / st -m> t2' / st' ->
+         massign v1 t2 / st -m> massign v1 t2' / st'
+where "t1 '/' st1 '-m>' t2 '/' st2" := (metastep (t1,st1) (t2,st2)).
+
+
 Fixpoint mstepfn (t : mtm) (s : mstore) : mtm * mstore :=
   match t with
   | mvar _ | munit | mconst _ | mabs _ _ | mloc _ | merror _ => (t,s)
@@ -563,30 +620,133 @@ Fixpoint mstepfn (t : mtm) (s : mstore) : mtm * mstore :=
       (massign t1' t2, s')   
   end.
 
-Fixpoint reify_tm (t : tm) : mtm :=
+Theorem mstepfn_sound :
+  forall mt ms mt' ms',
+    mt / ms -m> mt' / ms' ->
+    mstepfn mt ms = (mt', ms').
+Proof.
+  intros mt; induction mt; intros; subst; simpl; inversion H; admit.
+  (* todo - same as stepfn_sound *)
+Admitted.
+
+Inductive reify_tm : tm -> mtm -> Prop :=
+| Reify_Var :
+    forall x, reify_tm (var x) (mvar x)
+| Reify_App :
+    forall t1 t2 mt1 mt2,
+      reify_tm t1 mt1 -> reify_tm t2 mt2 ->
+      reify_tm (app t1 t2) (mapp mt1 mt2)
+| Reify_Abs :
+    forall x t1 mt1,
+      reify_tm t1 mt1 ->
+      reify_tm (abs x t1) (mabs x mt1)
+| Reify_Const :
+    forall n, reify_tm (const n) (mconst n)
+| Reify_Scc :
+    forall t1 mt1,
+      reify_tm t1 mt1 ->
+      reify_tm (scc t1) (mscc mt1)
+| Reify_Prd :
+    forall t1 mt1,
+      reify_tm t1 mt1 ->
+      reify_tm (prd t1) (mprd mt1)    
+| Reify_Test0 :
+    forall t1 t2 t3 mt1 mt2 mt3,
+      reify_tm t1 mt1 ->
+      reify_tm t2 mt2 ->
+      reify_tm t3 mt3 ->
+      reify_tm (test0 t1 t2 t3) (mtest0 mt1 mt2 mt3)
+| Reify_Unit :
+    reify_tm unit munit
+| Reify_Ref :
+    forall t1 mt1,
+      reify_tm t1 mt1 ->
+      reify_tm (ref t1) (mref mt1)
+| Reify_Deref :
+    forall t1 mt1,
+      reify_tm t1 mt1 ->
+      reify_tm (deref t1) (mderef mt1)
+| Reify_Assign :
+    forall t1 t2 mt1 mt2,
+      reify_tm t1 mt1 ->
+      reify_tm t2 mt2 ->
+      reify_tm (assign t1 t2) (massign mt1 mt2)
+| Reify_Loc :
+    forall l, reify_tm (loc l) (mloc l)
+| Reify_Error :
+    forall s, reify_tm (error s) (merror s).
+
+Fixpoint reify_tm_fn (t : tm) : mtm :=
   match t with
   | var x' => mvar x'
-  | app t1 t2 => mapp (reify_tm t1) (reify_tm t2)
-  | abs x' t1 => mabs x' (reify_tm t1)
+  | app t1 t2 => mapp (reify_tm_fn t1) (reify_tm_fn t2)
+  | abs x' t1 => mabs x' (reify_tm_fn t1)
   | const n => mconst n
-  | scc t1 => mscc (reify_tm t1)
-  | prd t1 => mprd (reify_tm t1)
-  | test0 t1 t2 t3 => mtest0 (reify_tm t1) (reify_tm t2) (reify_tm t3)
+  | scc t1 => mscc (reify_tm_fn t1)
+  | prd t1 => mprd (reify_tm_fn t1)
+  | test0 t1 t2 t3 => mtest0 (reify_tm_fn t1) (reify_tm_fn t2) (reify_tm_fn t3)
   | unit => munit
-  | ref t1 => mref (reify_tm t1)
-  | deref t1  => mderef (reify_tm t1)
-  | assign t1 t2 => massign (reify_tm t1) (reify_tm t2)
+  | ref t1 => mref (reify_tm_fn t1)
+  | deref t1  => mderef (reify_tm_fn t1)
+  | assign t1 t2 => massign (reify_tm_fn t1) (reify_tm_fn t2)
   | loc l => mloc l
   | error s => merror s 
   end.
 
-Definition reify_st (st : store) : mstore :=
-  map (fun t => (reify_tm t, O)) st.
- 
-Definition reify (t : tm) (st : store) : (mtm * mstore) :=
+Theorem reify_tm_fn_sound :
+  forall t mt,
+    reify_tm t mt -> reify_tm_fn t = mt.
+Proof.
+  (* how to automate this proof?? it's pretty boilerplate-y *)
+  intros t; induction t; intros; cbn; inversion H; subst; try reflexivity;
+    try (specialize (IHt mt1); specialize (IHt H1); rewrite -> IHt; reflexivity).
+  - specialize (IHt1 mt1). specialize (IHt1 H2). rewrite -> IHt1.
+    specialize (IHt2 mt2). specialize (IHt2 H4). rewrite -> IHt2.
+    reflexivity.
+  - specialize (IHt mt1).  specialize (IHt H3).  rewrite -> IHt.
+    reflexivity.
+  - specialize (IHt1 mt1). specialize (IHt1 H3). rewrite -> IHt1.
+    specialize (IHt2 mt2). specialize (IHt2 H5). rewrite -> IHt2.
+    specialize (IHt3 mt3). specialize (IHt3 H6). rewrite -> IHt3.
+    reflexivity.
+  - specialize (IHt1 mt1). specialize (IHt1 H2). rewrite -> IHt1.
+    specialize (IHt2 mt2). specialize (IHt2 H4). rewrite -> IHt2.
+    reflexivity.
+Qed.
+
+(* think about the O here - how to make it general *)
+Inductive reify_st : store -> mstore -> Prop :=
+| ReifySt_Nil: reify_st [] []
+| ReifySt_Cons:
+    forall t mt s ms,
+      reify_st s ms ->
+      reify_tm t mt ->
+      reify_st (t::s) ((mt, O)::ms).
+
+Definition reify_st_fn (st : store) : mstore :=
+  map (fun t => (reify_tm_fn t, O)) st.
+
+Theorem reify_st_fn_sound :
+  forall s ms,
+    reify_st s ms -> reify_st_fn s = ms.
+Proof.
+  intros s; induction s; intros; inversion H; subst.
+  - reflexivity.
+  - simpl.
+    apply reify_tm_fn_sound in H4.
+    specialize (IHs ms0).
+    specialize (IHs H2).
+    rewrite -> H4.
+    rewrite -> IHs.
+    reflexivity.
+Qed.
+
+
+
+Definition reify_fn (t : tm) (st : store) : (mtm * mstore) :=
   (reify_tm t, reify_st st).
 
-Fixpoint reflect_mtm (mt : mtm) : tm :=
+Fixpoint reflect_mtm_fn (mt : mtm) : tm :=
   match mt with
   | mvar x' => var x'
   | mapp t1 t2 => app (reflect_mtm t1) (reflect_mtm t2)
@@ -603,15 +763,31 @@ Fixpoint reflect_mtm (mt : mtm) : tm :=
   | merror s => error s 
   end.
 
-Definition reflect_mst (mst : mstore) : store :=
+Definition reflect_mst_fn (mst : mstore) : store :=
   map (fun pair =>
          match pair with
          | (t, _) => reflect_mtm t
          end)
       mst.
 
-Definition reflect (mt : mtm) (mst : mstore) : (tm * store) :=
+Definition reflect_fn (mt : mtm) (mst : mstore) : (tm * store) :=
   (reflect_mtm mt, reflect_mst mst).
+
+
+(* need to write inductive definitions for reify, reflect, and metastep? *)
+
+Theorem reflection_preserves_terms :
+  forall t s t' s' mt ms mt' ms' t'' s'',
+    stepfn t s = (t', s') ->
+    reify t s = (mt, ms) ->
+    mstepfn mt ms = (mt', ms') ->
+    reflect mt' ms' = (t'', s'') ->
+    t' = t''.
+Proof.
+  intros t.
+  induction t; intros; subst.
+  - simpl in H.
+Abort.
 
 Theorem reflection_sound :
   forall t s t' s' mt ms mt' ms',
@@ -620,7 +796,10 @@ Theorem reflection_sound :
     mstepfn mt ms = (mt', ms') ->
     reflect mt' ms' = (t', s').
 Proof.
-  intros.
+  intros t.
+  induction t; intros; subst.
+  - simpl in H.
+    rewrite <- H.
 Abort.
 
 
