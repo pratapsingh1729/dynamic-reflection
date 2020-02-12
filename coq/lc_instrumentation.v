@@ -907,6 +907,16 @@ Proof.
   - rewrite -> H6. reflexivity.
 Qed.
 
+Lemma reify_reflect_inv :
+  forall t s mt ms,
+    reify (t, s) (mt, ms) ->
+    reflect (mt, ms) (t, s).
+Proof.
+  intros.
+  inversion H; subst; inversion H3; subst; inversion H5; subst.
+  -
+Abort.
+
 Theorem reflection_sound :
   forall t s t' s' mt ms mt' ms' t'' s'',
     t / s --> t' / s' ->
@@ -915,14 +925,9 @@ Theorem reflection_sound :
     reflect (mt', ms') (t'', s'') ->
     t' = t'' /\ s' = s''.
 Proof.
-  intros.
-  inversion H; subst; simpl.
-  - inversion H0; subst.
-    inversion H7; subst.
-    inversion H6; subst.
-    inversion H1; subst.
-    inversion H2; subst.
-    (* this seems like the wrong way to do this ...... *)
+  intros t.
+  induction t; intros; simpl; subst; inversion H; subst.
+  - 
 Abort.
 
 
