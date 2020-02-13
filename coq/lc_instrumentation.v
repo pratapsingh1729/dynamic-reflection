@@ -169,6 +169,7 @@ Inductive step : tm * store -> tm * store -> Prop :=
          assign v1 t2 / st --> assign v1 t2' / st'
 
 where "t1 '/' st1 '-->' t2 '/' st2" := (step (t1,st1) (t2,st2)).
+Hint Constructors step.
 
 Definition relation (X : Type) := X -> X -> Prop.
 Inductive multi {X : Type} (R : relation X) : relation X :=
@@ -975,7 +976,6 @@ Theorem reflection_sound :
 Proof.
   intros t.
   induction t; intros; simpl; subst; inversion H; subst.
-  - 
 Abort.
 
 
