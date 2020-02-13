@@ -921,20 +921,49 @@ Proof.
   intros t.
   induction t; intros;
   inversion H ; subst; inversion H0; subst; inversion H4; subst;
-    inversion H5; subst; inversion H6; subst; inversion H8; subst;
-      eauto;
-      try (assert (t = t1) as TT1 by eauto;
-           rewrite TT1; reflexivity);
-      try (assert (t1 = t0) as T1T0 by eauto;
-           assert (t2 = t3) as T2T3 by eauto;
-           rewrite T1T0; rewrite T2T3; reflexivity);
-      try (assert (t1 = t0) as T1T0 by eauto;
-           assert (t2 = t4) as T2T4 by eauto;
-           assert (t3 = t5) as T3T5 by eauto;
-           rewrite T1T0; rewrite T2T4; rewrite T3T5; reflexivity).
+  inversion H5; subst; inversion H6; subst; inversion H8; subst;
+    eauto;
+    try (assert (t = t1) as TT1 by eauto;
+         rewrite TT1; reflexivity);
+    try (assert (t1 = t0) as T1T0 by eauto;
+         assert (t2 = t3) as T2T3 by eauto;
+         rewrite T1T0; rewrite T2T3; reflexivity);
+    try (assert (t1 = t0) as T1T0 by eauto;
+         assert (t2 = t4) as T2T4 by eauto;
+         assert (t3 = t5) as T3T5 by eauto;
+         rewrite T1T0; rewrite T2T4; rewrite T3T5; reflexivity).
 Qed.
 
 
+Lemma reify_reflect_inv_s :
+  forall t s mt ms t' s',
+    reify (t, s) (mt, ms) ->
+    reflect (mt, ms) (t', s') ->
+    s = s'.
+Proof.
+  intros t s.
+  induction s; intros;
+    inversion H ; subst; inversion H0; subst; inversion H4; subst;
+    inversion H5; subst; inversion H6; subst; inversion H8; subst;
+    try reflexivity;
+    try (assert (a = t) as AT by eauto using reify_reflect_inv_t;
+         assert (s = s0) as SS0 by eauto;
+         rewrite AT; rewrite SS0; reflexivity).
+  - assert (a = t) as AT by eauto using reify_reflect_inv_t.
+    assert (s = s1) as SS1 by eauto.
+    rewrite AT. rewrite SS1. reflexivity.
+Qed.
+
+Lemma reify_reflect_inv :
+  forall t s mt ms t' s',
+    reify (t, s) (mt, ms) ->
+    reflect (mt, ms) (t', s') ->
+    t = t' /\ s = s'.
+Proof.
+  intros. split.
+  - eauto using reify_reflect_inv_t.
+  - eauto using reify_reflect_inv_s.
+Qed.
 
 Theorem reflection_sound :
   forall t s t' s' mt ms mt' ms' t'' s'',
