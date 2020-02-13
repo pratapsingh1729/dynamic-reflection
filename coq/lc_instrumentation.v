@@ -537,7 +537,7 @@ Inductive metastep : mtm * mstore -> mtm * mstore -> Prop :=
          t2 / st -m> t2' / st' ->
          massign v1 t2 / st -m> massign v1 t2' / st'
 where "t1 '/' st1 '-m>' t2 '/' st2" := (metastep (t1,st1) (t2,st2)).
-
+Hint Constructors metastep.
 
 Fixpoint mstepfn (t : mtm) (s : mstore) : mtm * mstore :=
   match t with
@@ -675,6 +675,7 @@ Inductive reify_tm : tm -> mtm -> Prop :=
     forall l, reify_tm (loc l) (mloc l)
 | Reify_Error :
     forall s, reify_tm (error s) (merror s).
+Hint Constructors reify_tm.
 
 Fixpoint reify_tm_fn (t : tm) : mtm :=
   match t with
@@ -722,6 +723,7 @@ Inductive reify_st : store -> mstore -> Prop :=
       reify_st s ms ->
       reify_tm t mt ->
       reify_st (t::s) ((mt, O)::ms).
+Hint Constructors reify_st.
 
 Definition reify_st_fn (st : store) : mstore :=
   map (fun t => (reify_tm_fn t, O)) st.
@@ -746,6 +748,7 @@ Inductive reify : tm * store -> mtm * mstore -> Prop :=
     reify_tm t mt ->
     reify_st s ms ->
     reify (t, s) (mt, ms).
+Hint Constructors reify.
 
 Definition reify_fn (t : tm) (st : store) : (mtm * mstore) :=
   (reify_tm_fn t, reify_st_fn st).
@@ -811,6 +814,7 @@ Inductive reflect_mtm : mtm -> tm -> Prop :=
     forall l, reflect_mtm (mloc l) (loc l)
 | Reflect_Error :
     forall s, reflect_mtm (merror s) (error s).
+Hint Constructors reflect_mtm.
 
 Fixpoint reflect_mtm_fn (mt : mtm) : tm :=
   match mt with
@@ -857,7 +861,7 @@ Inductive reflect_mst : mstore -> store -> Prop :=
       reflect_mst ms s ->
       reflect_mtm mt t ->
       reflect_mst ((mt, n)::ms) (t::s).
-
+Hint Constructors reflect_mst.
 
 Definition reflect_mst_fn (mst : mstore) : store :=
   map (fun pair =>
@@ -887,6 +891,7 @@ Inductive reflect : mtm * mstore -> tm * store -> Prop :=
       reflect_mtm mt t ->
       reflect_mst ms s ->
       reflect (mt, ms) (t, s).
+Hint Constructors reflect.
 
 Definition reflect_fn (mt : mtm) (mst : mstore) : (tm * store) :=
   (reflect_mtm_fn mt, reflect_mst_fn mst).
@@ -907,15 +912,29 @@ Proof.
   - rewrite -> H6. reflexivity.
 Qed.
 
-Lemma reify_reflect_inv :
-  forall t s mt ms,
+Lemma reify_reflect_inv_t :
+  forall t s mt ms t' s',
     reify (t, s) (mt, ms) ->
-    reflect (mt, ms) (t, s).
+    reflect (mt, ms) (t', s') ->
+    t = t'.
 Proof.
-  intros.
-  inversion H; subst; inversion H3; subst; inversion H5; subst.
-  -
-Abort.
+  intros t.
+  induction t; intros;
+  inversion H ; subst; inversion H0; subst; inversion H4; subst;
+    inversion H5; subst; inversion H6; subst; inversion H8; subst;
+      eauto;
+      try (assert (t = t1) as TT1 by eauto;
+           rewrite TT1; reflexivity);
+      try (assert (t1 = t0) as T1T0 by eauto;
+           assert (t2 = t3) as T2T3 by eauto;
+           rewrite T1T0; rewrite T2T3; reflexivity);
+      try (assert (t1 = t0) as T1T0 by eauto;
+           assert (t2 = t4) as T2T4 by eauto;
+           assert (t3 = t5) as T3T5 by eauto;
+           rewrite T1T0; rewrite T2T4; rewrite T3T5; reflexivity).
+Qed.
+
+
 
 Theorem reflection_sound :
   forall t s t' s' mt ms mt' ms' t'' s'',
