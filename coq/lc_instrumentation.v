@@ -919,8 +919,7 @@ Lemma reify_reflect_inv_t :
     reflect (mt, ms) (t', s') ->
     t = t'.
 Proof.
-  intros t.
-  induction t; intros;
+  intros t; induction t; intros;
   inversion H ; subst; inversion H0; subst; inversion H4; subst;
   inversion H5; subst; inversion H6; subst; inversion H8; subst;
     eauto;
@@ -977,8 +976,4 @@ Proof.
   intros t.
   induction t; intros; simpl; subst; inversion H; subst.
 Abort.
-
-
-
-                   
 
