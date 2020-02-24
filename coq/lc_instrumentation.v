@@ -914,9 +914,9 @@ Proof.
 Qed.
 
 Lemma reify_reflect_inv_t :
-  forall t s mt ms t' s',
+  forall t s mt ms ms' t' s',
     reify (t, s) (mt, ms) ->
-    reflect (mt, ms) (t', s') ->
+    reflect (mt, ms') (t', s') ->
     t = t'.
 Proof.
   intros t; induction t; intros;
@@ -934,24 +934,30 @@ Proof.
          rewrite T1T0; rewrite T2T4; rewrite T3T5; reflexivity).
 Qed.
 
-
-Lemma reify_reflect_inv_s :
-  forall t s mt ms t' s',
-    reify (t, s) (mt, ms) ->
-    reflect (mt, ms) (t', s') ->
+Lemma reify_st_reflect_mst_inv :
+  forall s ms s',
+    reify_st s ms ->
+    reflect_mst ms s' ->
     s = s'.
 Proof.
-  intros t s.
-  induction s; intros;
-    inversion H ; subst; inversion H0; subst; inversion H4; subst;
-    inversion H5; subst; inversion H6; subst; inversion H8; subst;
-    try reflexivity;
-    try (assert (a = t) as AT by eauto using reify_reflect_inv_t;
-         assert (s = s0) as SS0 by eauto;
-         rewrite AT; rewrite SS0; reflexivity).
-  - assert (a = t) as AT by eauto using reify_reflect_inv_t.
-    assert (s = s1) as SS1 by eauto.
-    rewrite AT. rewrite SS1. reflexivity.
+  intros s; induction s; intros.
+  inversion H; subst; inversion H0; subst; auto.
+  inversion H; subst. inversion H0; subst.
+  assert (a = t) by eauto using reify_reflect_inv_t. rewrite H1.
+  specialize (IHs ms0 s0 H3 H7). rewrite IHs.
+  auto.
+Qed.
+
+Lemma reify_reflect_inv_s :
+  forall t s mt mt' ms t' s',
+    reify (t, s) (mt, ms) ->
+    reflect (mt', ms) (t', s') ->
+    s = s'.
+Proof.
+  intros.
+  inversion H; subst; inversion H0; subst.
+  generalize H8. generalize H6.
+  apply reify_st_reflect_mst_inv.
 Qed.
 
 Lemma reify_reflect_inv :
@@ -965,6 +971,47 @@ Proof.
   - eauto using reify_reflect_inv_s.
 Qed.
 
+Ltac invsubst x := inversion x; subst.
+
+Ltac pinvsubst x := idtac x; invsubst x.
+
+Ltac invert_something :=
+  match goal with
+  | [ H : metastep _ _ |- _] => pinvsubst H
+  | [ H : reify _ _ |- _] => pinvsubst H
+  | [ H : reflect _ _ |- _] => pinvsubst H
+  | [ H : reify_tm _ _ |- _] => pinvsubst H
+  | [ H : reify_st _ _ |- _] => pinvsubst H
+  | [ H : reflect_mtm _ _ |- _] => pinvsubst H
+  | [ H : reflect_mst _ _ |- _] => pinvsubst H
+  | _ => idtac
+  end.
+
+Ltac invert_all := repeat (try (progress invert_something)).
+
+Lemma reify_preserves_values :
+  forall t mt,
+    reify_tm t mt ->
+    value t -> mvalue mt.
+Proof.
+  intros t mt R V; invsubst V; invsubst R; eauto.
+Qed.
+
+Lemma reify_preserves_mvalues :
+  forall t mt,
+    reify_tm t mt -> mvalue mt -> value t.
+Proof.
+  - intros t mt R MV; invsubst MV; invsubst R; eauto.
+Qed.
+
+Lemma mvalue_not_metastep :
+  forall mt ms,
+    mvalue mt ->
+    ~ (exists mt' ms', mt / ms -m> mt' / ms').
+Proof.
+  intros; inversion H; intuition; inversion H1; inversion H2; inversion H3.
+Qed.  
+
 Theorem reflection_sound :
   forall t s t' s' mt ms mt' ms' t'' s'',
     t / s --> t' / s' ->
@@ -974,6 +1021,31 @@ Theorem reflection_sound :
     t' = t'' /\ s' = s''.
 Proof.
   intros t.
-  induction t; intros; simpl; subst; inversion H; subst.
-Abort.
+  induction t; intros; invsubst H; simpl.
+  - invsubst H0. invsubst H7. invsubst H6.
+    assert (mvalue mt2) by eauto using reify_preserves_values.
+    assert (mvalue (mabs x mt0)) by eauto.
+    invsubst H1.
+    + admit. 
+    + invsubst H12.
+    + exfalso. specialize (mvalue_not_metastep mt2 ms H3). intuition.
+      apply H8. exists t2'. exists ms'. exact H17.
+  - admit.
+  - admit.
+  - invsubst H0. invsubst H6. invsubst H1.
+    + invsubst H2. invsubst H9. invsubst H4. intuition.
+      eapply reify_reflect_inv_s; eauto.
+    + invsubst H0. invsubst H10. invsubst H9.
+      invsubst H5.
+  - invsubst H0.
+    invsubst H7.
+    assert (~value t) by eauto using step_not_value.
+    assert (~ mvalue mt1) by eauto using reify_preserves_mvalues.
+    
+    specialize (IHt s t1' s' ).
+    assert (reify (t, s) (mt1, ms)) by eauto.    
+    
+    
+       
+
 
