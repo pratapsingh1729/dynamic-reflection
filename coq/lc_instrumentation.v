@@ -951,7 +951,7 @@ Lemma mvalue_not_metastep :
     ~ (exists mt' ms', mt / ms -m> mt' / ms').
 Proof.
   intros; inversion H; intuition; inversion H1; inversion H2; inversion H3.
-Qed.  
+Qed.
 
 Theorem reflection_sound :
   forall t s t' s' mt ms mt' ms' t'' s'',
@@ -967,7 +967,7 @@ Proof.
     assert (mvalue mt2) by eauto using reify_preserves_values.
     assert (mvalue (mabs x mt0)) by eauto.
     invsubst H1.
-    + admit. 
+    + admit.
     + invsubst H12.
     + exfalso. specialize (mvalue_not_metastep mt2 ms H3). intuition.
       apply H8. exists t2'. exists ms'. exact H17.
