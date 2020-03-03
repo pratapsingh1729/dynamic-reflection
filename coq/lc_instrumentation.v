@@ -278,111 +278,52 @@ Proof.
   intros.
   destruct t; simpl; try reflexivity; try contradict H; constructor.
 Qed.
-  
+
+
+Ltac stepfn_sound_tac1 :=
+  match goal with
+  | [ H : ?t / ?s --> ?t' / ?s' |- _ ] =>
+    specialize (not_valueb_sound t) as NV;
+    specialize (step_not_value t s t' s' H) as VBS;
+    intros
+  | _ => idtac
+  end.
+      
+Ltac stepfn_sound_tac2 :=
+  match goal with
+  | [ H1 : ~ value ?t -> valueb ?t = false,
+      H2 : ~ value ?t |- _ ] =>
+    specialize (H1 H2); rewrite H1
+  | _ => idtac
+  end.
+
+Ltac stepfn_sound_tac3 :=
+  match goal with
+  | [ H : value ?t |- _ ] =>
+    apply valueb_sound in H; rewrite H
+  end.
+
+Ltac stepfn_sound_tac4 :=
+  match goal with
+  | [ H : (forall _ _ _, (?t / _ --> _ / _) -> _),
+      H1 : ?t / ?s --> ?t' / ?s' |- _] =>
+    specialize (H s t' s' H1); now rewrite H
+  | [ H : (forall _ _ _, (?t / _ --> _ / _) -> _) |- _ ] => auto
+  end.
+                                     
+Ltac stepfn_sound_tac :=
+  stepfn_sound_tac1; stepfn_sound_tac2;
+  try stepfn_sound_tac3; try stepfn_sound_tac4.
+
 Theorem stepfn_sound : forall t1 s1 t2 s2,
     t1 / s1 --> t2 / s2 -> stepfn t1 s1 = (t2, s2).
 Proof.
   intros t1.
-  induction t1; intros; inversion H; subst; simpl.
-  - apply valueb_sound in H1.
-    rewrite H1.
-    simpl.
-    reflexivity.
-  - specialize (not_valueb_sound t1_1) as VBS.
-    specialize (step_not_value t1_1 s1 t1' s2 H1) as NV.
-    specialize (VBS NV).
-    rewrite VBS.
-    specialize (IHt1_1 s1 t1' s2).
-    rewrite IHt1_1.
-    reflexivity.
-    assumption.
-  - apply valueb_sound in H2.
-    rewrite H2.
-    specialize (step_not_value t1_2 s1 t2' s2 H6) as NV.
-    specialize (not_valueb_sound t1_2).
-    intro H3.
-    specialize (H3 NV).
-    rewrite H3.
-    specialize (IHt1_2 s1 t2' s2).
-    rewrite IHt1_2.
-    reflexivity.
-    assumption.
-  - cbn. reflexivity.
-  - specialize (step_not_value t1 s1 t1' s2 H1) as NV.
-    specialize (not_valueb_sound t1).
-    intro H2.
-    specialize (H2 NV).
-    rewrite H2.
-    specialize (IHt1 s1 t1' s2).
-    rewrite IHt1.
-    reflexivity.
-    assumption.
-  - cbn. reflexivity.
-  - specialize (step_not_value t1 s1 t1' s2 H1) as NV.
-    specialize (not_valueb_sound t1).
-    intro H2.
-    specialize (H2 NV).
-    rewrite H2.
-    specialize (IHt1 s1 t1' s2).
-    rewrite IHt1.
-    reflexivity.
-    assumption.
-  - specialize (step_not_value t1_1 s1 t1' s2 H1) as NV.
-    specialize (not_valueb_sound t1_1).
-    intro H2.
-    specialize (H2 NV).
-    rewrite H2.
-    specialize (IHt1_1 s1 t1' s2 H1).
-    rewrite IHt1_1.
-    reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - apply valueb_sound in H1.
-    rewrite H1.
-    reflexivity.
-  - specialize (step_not_value t1 s1 t1' s2 H1) as NV.
-    specialize (not_valueb_sound t1).
-    intro H2.
-    specialize (H2 NV).
-    rewrite H2.
-    specialize (IHt1 s1 t1' s2 H1).
-    rewrite IHt1.
-    reflexivity.
-  - apply Nat.ltb_lt in H1.
-    rewrite H1.
-    reflexivity.
-  - specialize (step_not_value t1 s1 t1' s2 H1) as NV.
-    specialize (not_valueb_sound t1).
-    intro H2.
-    specialize (H2 NV).
-    rewrite H2.
-    specialize (IHt1 s1 t1' s2 H1).
-    rewrite IHt1.
-    reflexivity.
-  - apply valueb_sound in H2.
-    rewrite H2.
-    apply Nat.ltb_lt in H6.
-    rewrite H6.
-    reflexivity.
-  - specialize (step_not_value t1_1 s1 t1' s2 H1) as NV.
-    specialize (not_valueb_sound t1_1).
-    intro H2.
-    specialize (H2 NV).
-    rewrite H2.
-    specialize (IHt1_1 s1 t1' s2 H1).
-    rewrite IHt1_1.
-    reflexivity.
-  - apply valueb_sound in H2.
-    rewrite H2.
-    specialize (step_not_value t1_2 s1 t2' s2 H6) as NV.
-    specialize (not_valueb_sound t1_2).
-    intro H3.
-    specialize (H3 NV).
-    rewrite H3.
-    specialize (IHt1_2 s1 t2' s2 H6).
-    rewrite IHt1_2.
-    reflexivity.
+  induction t1; intros; inversion H; subst; simpl; stepfn_sound_tac.
+  - apply Nat.ltb_lt in H1. now rewrite H1.
+  - apply Nat.ltb_lt in H6. now rewrite H6.
 Qed.
+
 
 
 (* --------------------------------------------------- *)
