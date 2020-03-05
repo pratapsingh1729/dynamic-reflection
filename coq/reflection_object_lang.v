@@ -5,84 +5,187 @@ From Coq Require Import Lists.List.
 From Coq Require Import Decidable.
 Import ListNotations.
 
-(* a continuation-based semantics for an IMP-like language, loosely based on
- * https://xavierleroy.org/courses/EUTypes-2019/html/EUTypes2019.CompilerVerification.IMP.html *)
+(* terms *)
+Inductive tm  : Type :=
+  | var    : string -> tm
+  | app    : tm -> tm -> tm
+  | abs    : string -> tm -> tm
+  | const  : nat -> tm
+  | scc    : tm -> tm
+  | prd    : tm -> tm
+  | test0  : tm -> tm -> tm -> tm
+  | unit   : tm
+  | ref    : tm -> tm
+  | deref  : tm -> tm
+  | assign : tm -> tm -> tm
+  | loc    : nat -> tm
+  | reflect : tm -> store -> tm
+with store :=
+  | STORE : list tm -> store.
 
-Definition ident := string.
-Definition store : Type := ident -> nat.
 
-(* large-step for arithmetic expressions *)
-Inductive aexp : Type :=
-  | aconst (n: nat)                       
-  | avar (x: ident)                     
-  | aplus (a1: aexp) (a2: aexp)
-  | amult (a1 : aexp) (a2: aexp).
+(* values *)
+Inductive value : tm -> Prop :=
+  | v_abs  : forall x t,
+      value (abs x t)
+  | v_nat : forall n,
+      value (const n)
+  | v_unit :
+      value unit
+  | v_loc : forall l,
+      value (loc l).
+Hint Constructors value.
 
-Fixpoint aeval (s: store) (a: aexp) : nat :=
-  match a with
-  | aconst n => n
-  | avar x => s x
-  | aplus a1 a2 => aeval s a1 + aeval s a2
-  | amult a1 a2 => aeval s a1 * aeval s a2
+Fixpoint valueb (t : tm) : bool :=
+  match t with
+  | abs _ _ | const _ | unit | loc _ => true
+  | _ => false
   end.
-Hint Unfold aeval.
 
-(* large-step for boolean expressions *)
-Inductive bexp : Type :=
-  | btrue | bfalse
-  | beq (a1: aexp) (a2: aexp)       
-  | bleq (a1: aexp) (a2: aexp)   
-  | bnot (b1: bexp)                    
-  | band (b1: bexp) (b2: bexp)
-  | bor  (b1: bexp) (b2: bexp).
+Theorem valueb_sound : forall t, value t -> (valueb t = true).
+Proof.
+  intros.
+  inversion H; simpl; reflexivity.
+Qed.
 
-Fixpoint beval (s: store) (b: bexp) : bool :=
-  match b with
-  | btrue => true
-  | bfalse => false
-  | beq a1 a2 => aeval s a1 =? aeval s a2
-  | bleq a1 a2 => aeval s a1 <=? aeval s a2
-  | bnot b1 => negb (beval s b1)
-  | band b1 b2 => beval s b1 && beval s b2
-  | bor b1 b2 => beval s b1 || beval s b2
+Theorem valueb_complete : forall t, (valueb t = true) -> value t.
+Proof.
+  intros.
+  destruct t; simpl; try discriminate; auto.
+Qed.
+
+(* substitution. NB ignores free-variable issues. *)
+Fixpoint subst (x:string) (s:tm) (t:tm) : tm :=
+  match t with
+  | var x'       =>
+      if String.eqb x x' then s else t
+  | app t1 t2    =>
+      app (subst x s t1) (subst x s t2)
+  | abs x' t1  =>
+      if String.eqb x x' then t else abs x' (subst x s t1)
+  | const n        =>
+      t
+  | scc t1      =>
+      scc (subst x s t1)
+  | prd t1      =>
+      prd (subst x s t1)
+  | test0 t1 t2 t3 =>
+      test0 (subst x s t1) (subst x s t2) (subst x s t3)
+  | unit         =>
+      t
+  | ref t1       =>
+      ref (subst x s t1)
+  | deref t1     =>
+      deref (subst x s t1)
+  | assign t1 t2 =>
+      assign (subst x s t1) (subst x s t2)
+  | loc _        =>
+      t
+  | reflect _ _ => t
   end.
-Hint Unfold beval.
+Notation "'[' x ':=' s ']' t" := (subst x s t) (at level 20).
 
-(* statements in the language *)
-Inductive stmt: Type :=
-  | skip
-  | assign (x: ident) (a: aexp)        
-  | seq (s1: stmt) (s2: stmt)            
-  | cond (b: bexp) (s1: stmt) (s2: stmt) 
-  | while (b: bexp) (s1: stmt).
 
-Definition store_update (x: ident) (v: nat) (s: store) : store :=
-  fun y => if string_dec x y then v else s y.
+(* equivalent to `t1; t2` *)
+Definition tseq t1 t2 :=
+  app (abs "x" t2) t1.
 
-(* continuation-based step semantics for language *)
-Definition cont := list stmt.
 
-Inductive step: stmt * cont * store -> stmt * cont * store -> Prop :=
-  | Step_Assign: forall x a k s,              
-      step (assign x a, k, s) (skip, k, store_update x (aeval s a) s)
-  | step_seq: forall c1 c2 s k,               
-      step (seq c1 c2, k, s) (c1, c2 :: k, s)
-  | step_cond: forall b c1 c2 k s,
-      step (cond b c1 c2, k, s) ((if beval s b then c1 else c2), k, s)
-  | step_while_done: forall b c k s,
-      beval s b = false ->
-      step (while b c, k, s) (skip, k, s)
-  | step_while_true: forall b c k s,
-      beval s b = true ->
-      step (while b c, k, s) (c, while b c :: k, s)
-  | step_skip_seq: forall c k s,
-      step (skip, c :: k, s) (c, k, s).
+(* store-based substitution semantics *)
+
+Definition store_lookup (n:nat) (st:store) :=
+  match st with
+  | STORE l => nth n l unit
+  end.
+
+Fixpoint replace {A:Type} (n:nat) (x:A) (l:list A) : list A :=
+  match l with
+  | nil => nil
+  | h :: t =>
+    match n with
+    | O => x :: t
+    | S n' => h :: replace n' x t
+    end
+  end.
+
+Definition store_replace n x st :=
+  match st with
+  | STORE l => STORE (replace n x l)
+  end.
+
+Definition st_length st :=
+  match st with
+  | STORE l => length l
+  end.
+
+Definition st_append v st :=
+  match st with
+  | STORE l => STORE (l ++ (v::nil))
+  end.
+
+Reserved Notation "t1 '/' st1 '-->' t2 '/' st2"
+  (at level 40, st1 at level 39, t2 at level 39).
+
+Inductive step : tm * store -> tm * store -> Prop :=
+  | ST_AppAbs : forall x t12 v2 st,
+         value v2 ->
+         app (abs x t12) v2 / st --> [x:=v2]t12 / st
+  | ST_App1 : forall t1 t1' t2 st st',
+         t1 / st --> t1' / st' ->
+         app t1 t2 / st --> app t1' t2 / st'
+  | ST_App2 : forall v1 t2 t2' st st',
+         value v1 ->
+         t2 / st --> t2' / st' ->
+         app v1 t2 / st --> app v1 t2'/ st'
+  | ST_SuccNat : forall n st,
+         scc (const n) / st --> const (S n) / st
+  | ST_Succ : forall t1 t1' st st',
+         t1 / st --> t1' / st' ->
+         scc t1 / st --> scc t1' / st'
+  | ST_PredNat : forall n st,
+         prd (const n) / st --> const (pred n) / st
+  | ST_Pred : forall t1 t1' st st',
+         t1 / st --> t1' / st' ->
+         prd t1 / st --> prd t1' / st'
+  | ST_If0 : forall t1 t1' t2 t3 st st',
+         t1 / st --> t1' / st' ->
+         test0 t1 t2 t3 / st --> test0 t1' t2 t3 / st'
+  | ST_If0_Zero : forall t2 t3 st,
+         test0 (const 0) t2 t3 / st --> t2 / st
+  | ST_If0_Nonzero : forall n t2 t3 st,
+         test0 (const (S n)) t2 t3 / st --> t3 / st
+  | ST_RefValue : forall v1 st,
+         value v1 ->
+         ref v1 / st --> loc (st_length st) / (st_append v1 st)
+  | ST_Ref : forall t1 t1' st st',
+         t1 / st --> t1' / st' ->
+         ref t1 /  st --> ref t1' /  st'
+  | ST_DerefLoc : forall st l,
+         l < st_length st ->
+         deref (loc l) / st --> store_lookup l st / st
+  | ST_Deref : forall t1 t1' st st',
+         t1 / st --> t1' / st' ->
+         deref t1 / st --> deref t1' / st'
+  | ST_Assign : forall v2 l st,
+         value v2 ->
+         l < st_length st ->
+         assign (loc l) v2 / st --> unit / store_replace l v2 st
+  | ST_Assign1 : forall t1 t1' t2 st st',
+         t1 / st --> t1' / st' ->
+         assign t1 t2 / st --> assign t1' t2 / st'
+  | ST_Assign2 : forall v1 t2 t2' st st',
+         value v1 ->
+         t2 / st --> t2' / st' ->
+         assign v1 t2 / st --> assign v1 t2' / st'
+  | ST_Reflect : forall t st st',
+      reflect t st / st'  --> t / st
+where "t1 '/' st1 '-->' t2 '/' st2" := (step (t1,st1) (t2,st2)).
+Hint Constructors step.
 
 
 
 
 (* 
-NEED CONTINUATIONS!!!!!!
 
 reify - take current continuation as argument
 
