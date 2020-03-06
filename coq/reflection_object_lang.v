@@ -19,6 +19,7 @@ Inductive tm  : Type :=
   | deref  : tm -> tm
   | assign : tm -> tm -> tm
   | loc    : nat -> tm
+  | reify  : tm -> tm
   | reflect : tm -> store -> tm
 with store :=
   | STORE : list tm -> store.
@@ -80,7 +81,8 @@ Fixpoint subst (x:string) (s:tm) (t:tm) : tm :=
   | assign t1 t2 =>
       assign (subst x s t1) (subst x s t2)
   | loc _        =>
-      t
+    t
+  | reify _     => t
   | reflect _ _ => t
   end.
 Notation "'[' x ':=' s ']' t" := (subst x s t) (at level 20).
@@ -177,19 +179,14 @@ Inductive step : tm * store -> tm * store -> Prop :=
          value v1 ->
          t2 / st --> t2' / st' ->
          assign v1 t2 / st --> assign v1 t2' / st'
+  | ST_Reify : forall k sname t s,
+      reify (abs k (abs sname t)) / s --> app (app (abs k (abs sname t))
+                                                   unit)  (* current continuation *)
+                                               unit       (* some way of passing in the store *)
+                                               / (STORE [])
   | ST_Reflect : forall t st st',
       reflect t st / st'  --> t / st
 where "t1 '/' st1 '-->' t2 '/' st2" := (step (t1,st1) (t2,st2)).
 Hint Constructors step.
 
 
-
-
-(* 
-
-reify - take current continuation as argument
-
-
-reflect - replace current continuation with argument
-
-*)
