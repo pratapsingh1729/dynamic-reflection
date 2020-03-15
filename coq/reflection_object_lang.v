@@ -190,3 +190,11 @@ where "t1 '/' st1 '-->' t2 '/' st2" := (step (t1,st1) (t2,st2)).
 Hint Constructors step.
 
 
+
+(* Scott encodings???
+
+first just reify the environment
+
+
+ *)
+
