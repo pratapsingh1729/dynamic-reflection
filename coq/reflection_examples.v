@@ -330,6 +330,7 @@ Qed.
 
 
 (* META LANGUAGE *)
+Module TrivialMeta.
 
 (* trivial example: just count the number of steps *)
 Definition metainfo : Type := nat.
@@ -358,8 +359,6 @@ Proof.
   intros; cbn; destruct c; destruct c'; eauto using stepfn_sound.
 Qed.
 
-
-
-
+End TrivialMeta.
 
 
