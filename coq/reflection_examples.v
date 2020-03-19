@@ -304,6 +304,7 @@ Ltac stepfn_sound_tac3 :=
   match goal with
   | [ H : value ?t |- _ ] =>
     apply valueb_sound in H; rewrite H
+  | _ => idtac
   end.
 
 Ltac stepfn_sound_tac4 :=
@@ -312,18 +313,20 @@ Ltac stepfn_sound_tac4 :=
       H1 : ?t / ?s --> ?t' / ?s' |- _] =>
     specialize (H s t' s' H1); now rewrite H
   | [ H : (forall _ _ _, (?t / _ --> _ / _) -> _) |- _ ] => auto
+  | _ => idtac
   end.
-
-
                                        
 Ltac stepfn_sound_tac :=
   stepfn_sound_tac1; stepfn_sound_tac2;
-  try stepfn_sound_tac3; try stepfn_sound_tac4.
+  stepfn_sound_tac3; stepfn_sound_tac4.
 
 Theorem stepfn_sound : forall t1 s1 t2 s2,
     t1 / s1 --> t2 / s2 -> stepfn (t1, s1) = (t2, s2).
 Proof.
-  induction t1; intros; inversion H; subst; simpl; unfold stepfn in *; stepfn_sound_tac.
+  induction t1; intros s1 t2 s2 H;
+    inversion H; subst; simpl;
+    unfold stepfn in *;
+    stepfn_sound_tac.
   - apply Nat.ltb_lt in H1. now rewrite H1.
   - apply Nat.ltb_lt in H6. now rewrite H6.
 Qed.
@@ -356,9 +359,73 @@ Theorem reflection_sound :
     step c c' ->
     reflect (metastepfn (reify c)) = c'.
 Proof.
-  intros; cbn; destruct c; destruct c'; eauto using stepfn_sound.
+  intros. cbn. destruct c. destruct c'. eauto using stepfn_sound.
 Qed.
 
 End TrivialMeta.
 
 
+Module MemoryInstrumentationMeta.
+
+(* count number of memory operations at each memory address *)
+Definition metainfo : Type := list nat.
+
+Definition metaconfig : Type := config * metainfo.
+
+Definition reify (c : config) : metaconfig :=
+  let (_, s) := c in (c, List.repeat 0 (length s)).
+
+(* Import ListNotations. *)
+(* Definition store1 := cons (const 1) *)
+(*                           (cons (const 2) *)
+(*                                 (cons (const 3) *)
+(*                                       nil)). *)
+(* Compute (reify (var "x", store1)). *)
+
+Definition reflect (mc : metaconfig) : config :=
+  let (c, _) := mc in c.
+
+Fixpoint incr_loc (n : nat) (l : metainfo) : metainfo :=
+  match l with
+  | nil => nil
+  | h :: t =>
+    match n with
+    | O => (S h) :: t
+    | S n' => h :: incr_loc n' t
+    end
+  end.
+
+Definition infostepfn (mc : metaconfig) : metainfo :=
+  let (c, mi) := mc in
+  let (t,  _) :=  c in
+  match t with
+  | ref t' => if valueb t' then mi ++ (0 :: nil) else mi
+  | deref (loc l) | assign (loc l) _ =>
+    if Nat.ltb l (length mi) then incr_loc l mi else nil (* error *)
+  | _ => mi
+  end.
+
+Definition configstepfn (mc : metaconfig) : config :=
+  let (c, _) := mc in stepfn c.
+
+Definition metastepfn (mc : metaconfig) : metaconfig :=
+  (configstepfn mc, infostepfn mc).
+
+Theorem reflection_sound :
+  forall c c',
+    step c c' ->
+    reflect (metastepfn (reify c)) = c'.
+Proof.
+  intros. cbn. destruct c. destruct c'.
+  unfold configstepfn in *. cbn.
+  eauto using stepfn_sound.
+Qed.     
+
+End MemoryInstrumentationMeta.
+
+
+
+Module JitMeta.
+
+
+End JitMeta.
