@@ -16,7 +16,9 @@ Inductive tm  : Type :=
   | const  : nat -> tm
   | scc    : tm -> tm
   | prd    : tm -> tm
-  | test0  : tm -> tm -> tm -> tm                                 
+  | test0  : tm -> tm -> tm -> tm
+  | test0_speculate_then : tm -> tm -> tm -> tm
+  | test0_speculate_else : tm -> tm -> tm -> tm
   | unit   : tm
   | ref    : tm -> tm
   | deref  : tm -> tm
@@ -72,6 +74,10 @@ Fixpoint subst (x:string) (s:tm) (t:tm) : tm :=
       prd (subst x s t1)
   | test0 t1 t2 t3 =>
       test0 (subst x s t1) (subst x s t2) (subst x s t3)
+  | test0_speculate_then t1 t2 t3 =>
+      test0_speculate_then (subst x s t1) (subst x s t2) (subst x s t3)
+  | test0_speculate_else t1 t2 t3 =>
+      test0_speculate_else (subst x s t1) (subst x s t2) (subst x s t3)
   | unit         =>
       t
   | ref t1       =>
@@ -143,6 +149,22 @@ Inductive step : config -> config -> Prop :=
          test0 (const 0) t2 t3 / st --> t2 / st
   | ST_If0_Nonzero : forall n t2 t3 st,
          test0 (const (S n)) t2 t3 / st --> t3 / st
+  | ST_If0_SpecThen : forall t1 t1' t2 t3 st st',
+         t1 / st --> t1' / st' ->
+         test0_speculate_then t1 t2 t3 / st -->
+           test0_speculate_then t1' t2 t3 / st'
+  | ST_If0_Zero_SpecThen : forall t2 t3 st,
+         test0_speculate_then (const 0) t2 t3 / st --> t2 / st
+  | ST_If0_Nonzero_SpecThen : forall n t2 t3 st,
+      test0_speculate_then (const (S n)) t2 t3 / st --> t3 / st
+  | ST_If0_SpecElse : forall t1 t1' t2 t3 st st',
+         t1 / st --> t1' / st' ->
+         test0_speculate_else t1 t2 t3 / st -->
+           test0_speculate_else t1' t2 t3 / st'
+  | ST_If0_Zero_SpecElse : forall t2 t3 st,
+         test0_speculate_else (const 0) t2 t3 / st --> t2 / st
+  | ST_If0_Nonzero_SpecElse : forall n t2 t3 st,
+         test0_speculate_else (const (S n)) t2 t3 / st --> t3 / st
   | ST_RefValue : forall v1 st,
          value v1 ->
          ref v1 / st --> loc (length st) / (st ++ v1::nil)
@@ -229,6 +251,26 @@ Fixpoint stepfn' (t : tm) (s : store) : config :=
     else
       let (cond', s') := stepfn' cond s in
       (test0 cond' yes no, s')
+  | test0_speculate_then cond yes no =>
+    if (valueb cond) then
+      match cond with
+      | const 0 => (yes, s)
+      | const (S n) => (no, s)
+      | _ => (error "test0_speculate_then of non nat", s)
+      end
+    else
+      let (cond', s') := stepfn' cond s in
+      (test0_speculate_then cond' yes no, s')
+  | test0_speculate_else cond yes no =>
+    if (valueb cond) then
+      match cond with
+      | const 0 => (yes, s)
+      | const (S n) => (no, s)
+      | _ => (error "test0_speculate_else of non nat", s)
+      end
+    else
+      let (cond', s') := stepfn' cond s in
+      (test0_speculate_else cond' yes no, s')
   | ref t1 =>
     if (valueb t1) then
       (loc (length s), (s ++ t1::nil))
@@ -332,39 +374,6 @@ Proof.
 Qed.
 
 
-(* META LANGUAGE *)
-Module TrivialMeta.
-
-(* trivial example: just count the number of steps *)
-Definition metainfo : Type := nat.
-
-Definition metaconfig : Type := config * metainfo.
-
-Definition reify (c : config) : metaconfig := (c, 0).
-
-Definition reflect (mc : metaconfig) : config :=
-  let (c, _) := mc in c.
-
-Definition infostepfn (mc : metaconfig) : metainfo :=
-  let (_, n) := mc in S n.
-
-Definition configstepfn (mc : metaconfig) : config :=
-  let (c, _) := mc in stepfn c.
-
-Definition metastepfn (mc : metaconfig) : metaconfig :=
-  (configstepfn mc, infostepfn mc).
-
-Theorem reflection_sound :
-  forall c c',
-    step c c' ->
-    reflect (metastepfn (reify c)) = c'.
-Proof.
-  intros. cbn. destruct c. destruct c'. eauto using stepfn_sound.
-Qed.
-
-End TrivialMeta.
-
-
 Module MemoryInstrumentationMeta.
 
 (* count number of memory operations at each memory address *)
@@ -425,6 +434,46 @@ End MemoryInstrumentationMeta.
   
 
 Module JitMeta.
+  (* TODO: try to express speculate in the object lang? *)
+
+  Definition let_tm (s : string) (t1 : tm) (t2 : tm) :=
+    app (abs s t2) t1.
+
+  (* need a better way of dealing with counters *)
+  Definition instrument (t : tm) (then_ctr : string) (else_ctr : string) : tm :=
+    match t with
+    | test0 cond yes no =>
+      (* let_tm then_ctr (ref (const 0)) *)
+      (*        (let_tm else_ctr (ref (const 0)) *)
+      test0 cond
+            (tseq (assign (var then_ctr) (scc (deref (var then_ctr))))
+                  yes)
+            (tseq (assign (var else_ctr) (scc (deref (var else_ctr))))
+                  no)                          
+    | _ => t
+    end.
 
 
+
+  Definition counter_value (c : config) (ctr : string) : nat :=
+    let (_, s) := c in
+    match stepfn (deref (var ctr), s) with
+    | (const n, _) => n
+    | _ => 0 (* error *)
+    end.
+             
+  Definition speculate (c : config) (then_ctr : string) (else_ctr : string) : config :=
+    let (t, s) := c in
+    match t with
+    | test0 cond yes no =>
+      let then_ct := counter_value c then_ctr in
+      let else_ct := counter_value c else_ctr in
+      if (Nat.ltb else_ct then_ct) then
+        (test0_speculate_then cond yes no, s)
+      else
+        (test0_speculate_else cond yes no, s)
+    | _ => c
+    end.
+  
+  
 End JitMeta.
