@@ -439,30 +439,30 @@ Module JitMeta.
   Definition let_tm (s : string) (t1 : tm) (t2 : tm) :=
     app (abs s t2) t1.
 
-  (* need a better way of dealing with counters *)
-  Definition instrument (t : tm) (then_ctr : string) (else_ctr : string) : tm :=
+  (* return new config and locations of counters *)
+  Definition instrument (c : config) : (config * nat * nat) :=
+    let (t, s) := c in
     match t with
     | test0 cond yes no =>
-      (* let_tm then_ctr (ref (const 0)) *)
-      (*        (let_tm else_ctr (ref (const 0)) *)
-      test0 cond
-            (tseq (assign (var then_ctr) (scc (deref (var then_ctr))))
-                  yes)
-            (tseq (assign (var else_ctr) (scc (deref (var else_ctr))))
-                  no)                          
-    | _ => t
+      let then_ctr := List.length s in
+      let else_ctr := then_ctr + 1 in
+      ((test0 cond
+              (tseq (assign (loc then_ctr) (scc (deref (loc then_ctr))))
+                    yes)
+              (tseq (assign (loc else_ctr) (scc (deref (loc else_ctr))))
+                    no),
+       s ++ (const 0)::(const 0)::nil), then_ctr, else_ctr)
+    | _ => (c, 0, 0) (* TODO plumbing to instrument every conditional, or something *)
     end.
 
-
-
-  Definition counter_value (c : config) (ctr : string) : nat :=
+  Definition counter_value (c : config) (ctrloc : nat) : nat :=
     let (_, s) := c in
-    match stepfn (deref (var ctr), s) with
+    match stepfn (deref (loc ctrloc), s) with
     | (const n, _) => n
     | _ => 0 (* error *)
     end.
              
-  Definition speculate (c : config) (then_ctr : string) (else_ctr : string) : config :=
+  Definition speculate (c : config) (then_ctr : nat) (else_ctr : nat) : config :=
     let (t, s) := c in
     match t with
     | test0 cond yes no =>
@@ -474,6 +474,7 @@ Module JitMeta.
         (test0_speculate_else cond yes no, s)
     | _ => c
     end.
-  
+
+
   
 End JitMeta.
