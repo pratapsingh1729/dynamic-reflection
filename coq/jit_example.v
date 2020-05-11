@@ -205,6 +205,15 @@ Definition multistep := (multi step).
 Notation "t1 '/' st '-->*' t2 '/' st'" :=
                (multistep (t1,st) (t2,st'))
                (at level 40, st at level 39, t2 at level 39).
+Hint Constructors multi.
+
+Theorem step_implies_multistep :
+  forall t1 s1 t2 s2,
+    t1 / s1 --> t2 / s2 ->
+    t1 / s1 -->* t2 / s2.
+Proof.
+  intros. eapply multi_step. apply H. apply multi_refl.
+Qed.
 
 
 Fixpoint stepfn' (t : tm) (s : store) : config :=
@@ -373,6 +382,30 @@ Proof.
   - apply Nat.ltb_lt in H6. now rewrite H6.
 Qed.
 
+Fixpoint repeat_func {A : Type} (f : A -> A) (n : nat) (x : A) : A :=
+  match n with
+  | O => x
+  | S n' => repeat_func f n' (f x)
+  end.
+
+Definition multistepfn := repeat_func stepfn.
+
+Theorem multistepfn_sound :
+  forall t1 s1 t2 s2,
+    t1 / s1 -->* t2 / s2 ->
+    (exists n, multistepfn n (t1, s1) = (t2, s2)).
+Proof.
+  intros.
+  induction H.
+  - exists 0; auto.
+  - destruct IHmulti.
+    exists (S x0).
+    assert (stepfn x = y).
+    { destruct x. destruct y. now eapply stepfn_sound. }    
+    cbn.
+    rewrite H2.
+    now rewrite H1.
+Qed.
 
 Module MemoryInstrumentationMeta.
 
@@ -439,6 +472,11 @@ Module JitMeta.
   Definition let_tm (s : string) (t1 : tm) (t2 : tm) :=
     app (abs s t2) t1.
 
+  Definition instr_term (t : tm) (l : nat) :=
+    (tseq (assign (loc l)
+                  (scc (deref (loc l))))
+           t).
+  
   (* return new config and locations of counters *)
   Definition instrument (c : config) : (config * nat * nat) :=
     let (t, s) := c in
@@ -446,17 +484,26 @@ Module JitMeta.
     | test0 cond yes no =>
       let then_ctr := List.length s in
       let else_ctr := then_ctr + 1 in
-      ((test0 cond
-              (tseq (assign (loc then_ctr) (scc (deref (loc then_ctr))))
-                    yes)
-              (tseq (assign (loc else_ctr) (scc (deref (loc else_ctr))))
-                    no),
+      ((test0 cond (instr_term yes then_ctr) (instr_term no else_ctr),
        s ++ (const 0)::(const 0)::nil), then_ctr, else_ctr)
-    | _ => (c, 0, 0) (* TODO plumbing to instrument every conditional, or something *)
+    (* | var x =>  *)
+    (* | app t1 t2 => *)
+    (* | abs x t1 =>  *)
+    (* | const n => *)
+    (* | scc t1 => *)
+    (* | prd t1 => *)
+    (* | test0_speculate_then cond yes no => *)
+    (* | test0_speculate_else cond yes no => *)
+    (* | unit =>  *)
+    (* | ref t1 => *)
+    (* | deref t1 => *)
+    (* | assign t1 t2 => *)
+    (* | loc l => *)
+    (* | error s => *)
+    | _ => (c, 0, 0)
     end.
 
-  Definition counter_value (c : config) (ctrloc : nat) : nat :=
-    let (_, s) := c in
+  Definition counter_value (s : store) (ctrloc : nat) : nat :=
     match stepfn (deref (loc ctrloc), s) with
     | (const n, _) => n
     | _ => 0 (* error *)
@@ -466,8 +513,8 @@ Module JitMeta.
     let (t, s) := c in
     match t with
     | test0 cond yes no =>
-      let then_ct := counter_value c then_ctr in
-      let else_ct := counter_value c else_ctr in
+      let then_ct := counter_value s then_ctr in
+      let else_ct := counter_value s else_ctr in
       if (Nat.ltb else_ct then_ct) then
         (test0_speculate_then cond yes no, s)
       else
@@ -475,6 +522,36 @@ Module JitMeta.
     | _ => c
     end.
 
+  Lemma instr_term_equiv :
+    forall t1 s1 t2 s2 l,
+      t1 / s1 --> t2 / s2 ->
+      l >= List.length s1 ->
+      (exists lst n,
+          multistepfn n (instr_term t1 l, s1) = (t2, (s2 ++ lst))).
+  Proof.
+    intros.
+    remember (l - Datatypes.length s1) as extra_len.
+  Admitted.
+  
+  Theorem instrument_valid :
+    forall t1 s1 t2 s2 t3 s3 n1 n2,
+      t1 / s1 --> t2 / s2 ->
+      instrument (t1, s1) = ((t3, s3), n1, n2) ->
+      (exists l n,
+          multistepfn n (t3, s3) = (t2, (s2 ++ l))).
+  Proof.
+    intros. destruct t1; try
+     (inversion H0; subst; exists []; rewrite app_nil_r;
+      eapply step_implies_multistep in H;
+      now eapply multistepfn_sound in H).
+    inversion H0; subst.
+    
+  Admitted.
 
+  
+    
+    
+    
+    
   
 End JitMeta.
