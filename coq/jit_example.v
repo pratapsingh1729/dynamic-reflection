@@ -17,6 +17,7 @@ Inductive tm  : Type :=
   | scc    : tm -> tm
   | prd    : tm -> tm
   | test0  : tm -> tm -> tm -> tm
+  | test0_speculate : nat -> nat -> tm -> tm -> tm -> tm
   | test0_speculate_then : tm -> tm -> tm -> tm
   | test0_speculate_else : tm -> tm -> tm -> tm
   | unit   : tm
@@ -74,6 +75,8 @@ Fixpoint subst (x:string) (s:tm) (t:tm) : tm :=
       prd (subst x s t1)
   | test0 t1 t2 t3 =>
       test0 (subst x s t1) (subst x s t2) (subst x s t3)
+  | test0_speculate l1 l2 t1 t2 t3 =>
+      test0_speculate l1 l2 (subst x s t1) (subst x s t2) (subst x s t3)
   | test0_speculate_then t1 t2 t3 =>
       test0_speculate_then (subst x s t1) (subst x s t2) (subst x s t3)
   | test0_speculate_else t1 t2 t3 =>
@@ -148,7 +151,14 @@ Inductive step : config -> config -> Prop :=
   | ST_If0_Zero : forall t2 t3 st,
          test0 (const 0) t2 t3 / st --> t2 / st
   | ST_If0_Nonzero : forall n t2 t3 st,
-         test0 (const (S n)) t2 t3 / st --> t3 / st
+      test0 (const (S n)) t2 t3 / st --> t3 / st
+  | ST_If0_Spec : forall t1 t1' t2 t3 st st' l1 l2,
+         t1 / st --> t1' / st' ->
+         test0_speculate l1 l2 t1 t2 t3 / st --> test0_speculate l1 l2 t1' t2 t3 / st'
+  | ST_If0_Spec_Zero : forall t2 t3 st l1 l2,
+         test0_speculate l1 l2 (const 0) t2 t3 / st --> t2 / st
+  | ST_If0_Spec_Nonzero : forall n t2 t3 st l1 l2,
+         test0_speculate l1 l2 (const (S n)) t2 t3 / st --> t3 / st
   | ST_If0_SpecThen : forall t1 t1' t2 t3 st st',
          t1 / st --> t1' / st' ->
          test0_speculate_then t1 t2 t3 / st -->
@@ -260,6 +270,16 @@ Fixpoint stepfn' (t : tm) (s : store) : config :=
     else
       let (cond', s') := stepfn' cond s in
       (test0 cond' yes no, s')
+  | test0_speculate l1 l2 cond yes no =>
+    if (valueb cond) then
+      match cond with
+      | const 0 => (yes, s)
+      | const (S n) => (no, s)
+      | _ => (error "test0 of non nat", s)
+      end
+    else
+      let (cond', s') := stepfn' cond s in
+      (test0_speculate l1 l2 cond' yes no, s')
   | test0_speculate_then cond yes no =>
     if (valueb cond) then
       match cond with
@@ -407,6 +427,22 @@ Proof.
     now rewrite H1.
 Qed.
 
+Require Import Coq.Program.Equality.
+
+Lemma end_of_store_unchanged :
+  forall t1 t2 s,
+    t1 / nil --> t2 / nil ->
+    t1 / s --> t2 / s.
+Proof.
+  intros. dependent induction H;
+            try (constructor; assumption);
+            try (constructor; apply IHstep; auto).
+  - apply ST_App2. assumption. apply IHstep; auto.
+  - cbn in H. inversion H.
+  - cbn in H0. inversion H0.
+  - apply ST_Assign2. assumption. apply IHstep; auto.
+Qed.  
+
 Module MemoryInstrumentationMeta.
 
 (* count number of memory operations at each memory address *)
@@ -464,7 +500,7 @@ Proof.
 Qed.     
 
 End MemoryInstrumentationMeta.
-  
+
 
 Module JitMeta.
   (* TODO: try to express speculate in the object lang? *)
@@ -484,7 +520,10 @@ Module JitMeta.
     | test0 cond yes no =>
       let then_ctr := List.length s in
       let else_ctr := then_ctr + 1 in
-      ((test0 cond (instr_term yes then_ctr) (instr_term no else_ctr),
+      ((test0_speculate then_ctr else_ctr
+                        cond
+                        (instr_term yes then_ctr)
+                        (instr_term no else_ctr),
        s ++ (const 0)::(const 0)::nil), then_ctr, else_ctr)
     (* | var x =>  *)
     (* | app t1 t2 => *)
@@ -492,6 +531,7 @@ Module JitMeta.
     (* | const n => *)
     (* | scc t1 => *)
     (* | prd t1 => *)
+    (* | test0_speculate then_loc else_loc cond yes no => *)
     (* | test0_speculate_then cond yes no => *)
     (* | test0_speculate_else cond yes no => *)
     (* | unit =>  *)
@@ -503,6 +543,14 @@ Module JitMeta.
     | _ => (c, 0, 0)
     end.
 
+  Definition test_program :=
+    (test0 (const 3) (const 4) (const 5)).
+
+  Definition test_program_instrumented :=
+    let '(p, _, _) := instrument (test_program, nil) in p.
+  
+  Compute (multistepfn 5 test_program_instrumented).
+  
   Definition counter_value (s : store) (ctrloc : nat) : nat :=
     match stepfn (deref (loc ctrloc), s) with
     | (const n, _) => n
@@ -522,16 +570,50 @@ Module JitMeta.
     | _ => c
     end.
 
-  Lemma instr_term_equiv :
-    forall t1 s1 t2 s2 l,
-      t1 / s1 --> t2 / s2 ->
-      l >= List.length s1 ->
-      (exists lst n,
-          multistepfn n (instr_term t1 l, s1) = (t2, (s2 ++ lst))).
+  Import ListNotations.
+  Open Scope list_scope.
+  
+  Lemma instr_term_equiv_empty_store :
+    forall t1 t2 k,
+      t1 / nil --> t2 / nil ->
+      (exists n,
+          multistepfn n (instr_term t1 0, (const k)::nil) = (t2, (const (S k))::nil )).
   Proof.
     intros.
-    remember (l - Datatypes.length s1) as extra_len.
+    unfold instr_term. exists 5.
+    cbn.
+    assert (["x" := unit] t1 = t1) by admit.
+    rewrite H0. apply stepfn_sound.
+    apply end_of_store_unchanged. 
+    apply H. 
   Admitted.
+
+  Theorem instrument_valid_empty_store :
+    forall t1 t2 t3 s3 n1 n2,
+      t1 / nil --> t2 / nil ->
+      instrument (t1, nil) = ((t3, s3), n1, n2) ->
+      (exists n' l t2',
+          (exists n, multistepfn n (t3, s3) = (t2', l))
+          /\ multistepfn n' (t2, nil) = (t2', nil)).
+  Proof.
+    intros. destruct t1; try 
+     (inversion H0; subst; exists 0; exists []; exists t2; split; auto;
+      eapply step_implies_multistep in H;
+      now eapply multistepfn_sound in H).
+    inversion H0; subst. inversion H; subst. 
+    - assert (exists n t1'', multistepfn n (t1', nil) = (t1'', nil) /\ value t1'') by admit.
+      destruct H1. destruct H1. destruct H1.
+      exists (S x). eexists. eexists. split.
+      + apply multistepfn_sound. eapply multi_step. apply ST_If0_Spec. apply end_of_store_unchanged. apply H2.
+        eapply multi_step. 
+    - exists 0. exists [const 1; const 0]. exists t2. split; auto.
+      exists 5. cbn. assert (["x" := unit] t2 = t2) by admit. now rewrite H1.
+    - exists 0. exists [const 0; const 1]. exists t2. split; auto.
+      exists 5. cbn. assert (["x" := unit] t2 = t2) by admit. now rewrite H1.
+  Admitted.
+
+
+  (* use special case _ for tseq *)
   
   Theorem instrument_valid :
     forall t1 s1 t2 s2 t3 s3 n1 n2,
